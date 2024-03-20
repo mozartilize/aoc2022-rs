@@ -17,7 +17,7 @@ impl Default for Ops {
 
 #[derive(Debug, Default)]
 struct Test {
-    div_by: i64,
+    div_by: u8,
     truthy_mk_idx: usize,
     falsy_mk_idx: usize,
 }
@@ -30,41 +30,65 @@ struct Monkey {
     test: Test,
 }
 
-fn run(monkeys: &mut Vec<Monkey>, rounds: u8) -> Vec<usize> {
+fn run(monkeys: &mut Vec<Monkey>, rounds: u16, worry_deduction_lvl: u8) -> Vec<usize> {
     let mut result = vec![0; monkeys.len()];
-    for r in 0..rounds {
-        println!("=============round {}=============", r);
+    // to keep your worry levels manageable
+    let least_common_multiple: u32 = monkeys.iter().map(|m| m.test.div_by as u32).product();
+    for _ in 0..rounds {
         for idx in 0..monkeys.len() {
             let monk = &monkeys[idx];
             let truthy_mk_idx = monk.test.truthy_mk_idx;
             let falsy_mk_idx = monk.test.falsy_mk_idx;
             let ops = monk.ops;
             let div_by = monk.test.div_by;
-            dbg!(&monk.items);
             result[idx] += monk.items.len();
             for item in monk.items.clone() {
                 let a = match ops {
-                    Ops::Add(val) => if val == -1 { item + item } else { item + val },
-                    Ops::Sub(val) => if val == -1 { item - item } else { item - val },
-                    Ops::Mul(val) => if val == -1 { item * item } else { item * val },
-                    Ops::Div(val) => if val == -1 { item / item } else { item / val },
+                    Ops::Add(val) => {
+                        if val == -1 {
+                            item + item
+                        } else {
+                            item + val
+                        }
+                    }
+                    Ops::Sub(val) => {
+                        if val == -1 {
+                            item - item
+                        } else {
+                            item - val
+                        }
+                    }
+                    Ops::Mul(val) => {
+                        if val == -1 {
+                            item * item
+                        } else {
+                            item * val
+                        }
+                    }
+                    Ops::Div(val) => {
+                        if val == -1 {
+                            item / item
+                        } else {
+                            item / val
+                        }
+                    }
                     Ops::NotSet => panic!("fuck!"),
                 };
-                let b = a / 3;
-                if b % div_by == 0 {
+                let b = (a / worry_deduction_lvl as i64) % (least_common_multiple as i64);
+                if b % (div_by as i64) == 0 {
                     if idx < truthy_mk_idx {
                         monkeys[truthy_mk_idx].items.push(b);
-                    } else if idx > truthy_mk_idx{
+                    } else if idx > truthy_mk_idx {
                         monkeys[truthy_mk_idx].tmp_items.push(b);
                     }
                 } else {
                     if idx < falsy_mk_idx {
                         monkeys[falsy_mk_idx].items.push(b);
-                    } else if idx > falsy_mk_idx{
-                       monkeys[falsy_mk_idx].tmp_items.push(b);
+                    } else if idx > falsy_mk_idx {
+                        monkeys[falsy_mk_idx].tmp_items.push(b);
                     }
                 };
-            };
+            }
         }
         for idx in 0..monkeys.len() {
             let monk = &mut monkeys[idx];
@@ -76,6 +100,17 @@ fn run(monkeys: &mut Vec<Monkey>, rounds: u8) -> Vec<usize> {
 }
 
 fn main() {
+    let part = std::env::args().last().unwrap_or("1".to_owned());
+    let mut rounds: u16 = 20;
+    let mut worry_deduction_lvl: u8 = 3;
+    match &part[..] {
+        "2" => {
+            rounds = 10000;
+            worry_deduction_lvl = 1;
+        }
+        &_ => (),
+    }
+
     let mut monkeys: Vec<Monkey> = vec![];
     let lines = io::stdin().lines();
     let mut idx = 0;
@@ -149,6 +184,5 @@ fn main() {
             monkey.test.falsy_mk_idx = str::parse(falsy_mk_idx_str).unwrap();
         }
     }
-    dbg!(&monkeys);
-    dbg!(run(&mut monkeys, 20));
+    dbg!(run(&mut monkeys, rounds, worry_deduction_lvl));
 }
