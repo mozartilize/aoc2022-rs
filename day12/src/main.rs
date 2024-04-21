@@ -34,35 +34,50 @@ struct Grid {
     start_idx: usize,
     end_idx: usize,
     width: usize,
+    acells: HashSet<usize>,
 }
 
 impl Grid {
-    fn walkable_cells_for(
-        &self,
-        cell: &Cell,
-    ) -> Vec<usize> {
+    fn walkable_cells_for_part1(&self, cell: &Cell) -> Vec<usize> {
         let mut cell_indies: Vec<usize> = vec![];
         // left_cell
-        if (cell.x + 1) % self.width != 1
-            && (cell.val >= self.cells[cell.x - 1].val -1)
-        {
+        if (cell.x + 1) % self.width != 1 && (cell.val >= self.cells[cell.x - 1].val - 1) {
             cell_indies.push(cell.x - 1);
         }
         // right_cell
-        if (cell.x + 1) % self.width != 0
-            && (cell.val >= self.cells[cell.x + 1].val -1)
-        {
+        if (cell.x + 1) % self.width != 0 && (cell.val >= self.cells[cell.x + 1].val - 1) {
             cell_indies.push(cell.x + 1);
         };
         // up_cell
-        if cell.x > self.width - 1
-            && (cell.val >= self.cells[cell.x - self.width].val -1)
-        {
+        if cell.x > self.width - 1 && (cell.val >= self.cells[cell.x - self.width].val - 1) {
             cell_indies.push(cell.x - self.width);
         }
         // down_cell
         if cell.x + self.width < self.cells.len()
-            && (cell.val >= self.cells[cell.x + self.width].val -1)
+            && (cell.val >= self.cells[cell.x + self.width].val - 1)
+        {
+            cell_indies.push(cell.x + self.width);
+        }
+        cell_indies
+    }
+
+    fn walkable_cells_for_part2(&self, cell: &Cell) -> Vec<usize> {
+        let mut cell_indies: Vec<usize> = vec![];
+        // left_cell
+        if (cell.x + 1) % self.width != 1 && (cell.val <= self.cells[cell.x - 1].val + 1) {
+            cell_indies.push(cell.x - 1);
+        }
+        // right_cell
+        if (cell.x + 1) % self.width != 0 && (cell.val <= self.cells[cell.x + 1].val + 1) {
+            cell_indies.push(cell.x + 1);
+        };
+        // up_cell
+        if cell.x > self.width - 1 && (cell.val <= self.cells[cell.x - self.width].val + 1) {
+            cell_indies.push(cell.x - self.width);
+        }
+        // down_cell
+        if cell.x + self.width < self.cells.len()
+            && (cell.val <= self.cells[cell.x + self.width].val + 1)
         {
             cell_indies.push(cell.x + self.width);
         }
@@ -73,36 +88,55 @@ impl Grid {
         &self.cells[x]
     }
 
-    fn walk(
-        &self,
-        to_cell: &Cell,
-    ) -> usize {
-        let mut visited: HashSet<usize> = HashSet::from([self.start_idx]);
-        let mut current = HashSet::from([self.start_idx]);
+    fn walk(&self, from_cell: &Cell, to_cell: Option<&Cell>) -> usize {
+        let mut visited: HashSet<usize> = HashSet::from([from_cell.x]);
+        let mut visited_val: HashSet<u8> = HashSet::from([from_cell.val]);
+        let mut current = HashSet::from([from_cell.x]);
         let mut steps = 0;
-        while !visited.contains(&to_cell.x) {
-            if current.is_empty() {
-                break;
-            }
+        loop {
             let mut next = HashSet::new();
             for idx in current {
-                for next_idx in self.walkable_cells_for(self.get_cell(idx)) {
+                let next_indices = if to_cell.is_some() {
+                    self.walkable_cells_for_part1(self.get_cell(idx))
+                } else {
+                    self.walkable_cells_for_part2(self.get_cell(idx))
+                };
+                for next_idx in next_indices {
                     if visited.contains(&next_idx) {
                         continue;
                     }
+
                     next.insert(next_idx);
                     visited.insert(next_idx);
+
+                    visited_val.insert(self.get_cell(next_idx).val);
+                    if to_cell.is_some() && visited.contains(&to_cell.unwrap().x) {
+                        std::mem::take(&mut next);
+                        break;
+                    } else if to_cell.is_none() && visited_val.contains(&97) {
+                        std::mem::take(&mut next);
+                        break;
+                    }
                 }
             }
             current = next;
-            steps +=1;
+            steps += 1;
+            if current.is_empty() {
+                break;
+            }
         }
         steps
     }
 
     fn run(&mut self) {
-        let steps = self.walk(self.get_cell(self.end_idx));
-        dbg!(steps);
+        let steps1 = self.walk(
+            self.get_cell(self.start_idx),
+            Some(self.get_cell(self.end_idx)),
+        );
+
+        let steps2 = self.walk(self.get_cell(self.end_idx), None);
+        dbg!(steps1);
+        dbg!(steps2);
     }
 }
 
@@ -113,6 +147,7 @@ fn main() {
         start_idx: 0,
         end_idx: 0,
         width: 0,
+        acells: HashSet::new(),
     };
     loop {
         let mut buf = vec![0u8; 1];
@@ -127,12 +162,16 @@ fn main() {
                 'a'..='z' => {
                     let cell = Cell::new(x, buf[0]);
                     grid.cells.push(cell);
+                    if buf[0] == 97 {
+                        grid.acells.insert(x);
+                    }
                     x += 1;
                 }
                 'S' => {
                     let cell = Cell::new(x, 97);
                     grid.cells.push(cell);
                     grid.start_idx = x;
+                    grid.acells.insert(x);
                     x += 1;
                 }
                 'E' => {
