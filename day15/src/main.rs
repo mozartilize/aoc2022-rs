@@ -1,4 +1,4 @@
-use day15::{Grid, Coord, Beacon, Sensor, Point};
+use day15::{Grid, Coord, Sensor};
 
 fn main() {
     let mut g = Grid::new();
@@ -50,35 +50,14 @@ fn main() {
     let b = g.get_or_create_beacon_at(3528871, 3361675);
     g.add_sensor(Sensor{coord: Coord::new(3028318, 3091480), beacon: b});
 
-    let p = g.iter_points().find(|p| {
-        match p {
-            Point::Beacon(b) => b.coord.y == 2000000,
-            _ => false
-        }
-    }).unwrap();
-    let b = match p {
-        Point::Beacon(b) => Some(b),
-        _ => None,
-    }.unwrap();
-    let mut x_forward = b.coord.x;
-    let mut x_backward = b.coord.x;
-    loop {
-        x_forward += 1;
-        if g.iter_sensors().filter(|s| {
-            s.as_ref().as_ref().distance_to(&Coord::new(x_forward, b.coord.y)) <= s.min_distance()
-        }).peekable().peek().is_none() {
-            break;
+    // part1
+    dbg!(g.cover_range_on_xline(2000000));
+    
+    // part2
+    for y in 0..=4000000 {
+        let r = g.cover_range_on_xline(y);
+        if r.len() > 1 {
+            dbg!(y, &r);
         }
     }
-    loop {
-        x_backward -= 1;
-        if g.iter_sensors().filter(|s| {
-            s.as_ref().as_ref().distance_to(&Coord::new(x_backward, b.coord.y)) <= s.min_distance()
-        }).peekable().peek().is_none() {
-            break;
-        }
-    }
-    dbg!(x_forward);
-    dbg!(x_backward);
-    dbg!(x_forward-1 - (x_backward+1));
 }
