@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug)]
 pub struct Coord {
     pub x: i64,
     pub y: i64,
@@ -16,12 +16,12 @@ impl Coord {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Beacon {
     pub coord: Coord,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Sensor {
     pub coord: Coord,
     pub beacon: Rc<Beacon>,
@@ -97,52 +97,30 @@ impl Grid {
         self.sensors.push(s_rc.clone());
     }
 
-    pub fn iter_points(&self) -> std::slice::Iter<'_, Point> {
-        self.points.iter()
-    }
-
-    pub fn iter_sensors(&self) -> std::slice::Iter<'_, Rc<Sensor>> {
-        self.sensors.iter()
-    }
-
     pub fn cover_range_on_xline(&self, y: i64) -> Vec<Vec<i64>> {
         let mut xes = vec![];
 
-        self.iter_sensors().for_each(|s| {
-            let some_coords = s.find_cut_xline(y);
-            if some_coords.is_some() {
-                xes.push(
-                    some_coords
-                        .unwrap()
-                        .iter()
-                        .map(|c| c.x)
-                        .collect::<Vec<i64>>(),
-                );
-            }
+        self.sensors.iter().for_each(|s| match s.find_cut_xline(y) {
+            Some(coords) => xes.push(coords.iter().map(|c| c.x).collect::<Vec<_>>()),
+            None => (),
         });
         xes.sort();
 
         let mut r = vec![];
-        xes.into_iter().reduce(|xes1, xes2| {
-            let xes_next;
-            if xes1[1] < xes2[0] {
-                xes_next = xes2.clone();
-                if r.len() == 0 {
-                    r.push(xes1);
-                }
-                r.push(xes2);
-            } else {
-                xes_next = vec![xes1[0], if xes1[1] > xes2[1] { xes1[1] } else { xes2[1] }];
-                if r.len() == 0 {
-                    r.push(xes_next.clone());
-                } else {
-                    let a = r.last_mut().unwrap();
-                    a[0] = xes1[0];
-                    a[1] = xes2[1];
-                }
+
+        for i in 0..xes.len() {
+            if r.len() == 0 {
+                r.push(xes[i].clone());
+                continue;
             }
-            xes_next
-        });
+            let xes1 = r.last_mut().unwrap();
+            let xes2 = &xes[i];
+            if xes1[1] < xes2[0] {
+                r.push(xes2.clone());
+            } else if xes1[1] < xes2[1] {
+                xes1[1] = xes2[1];
+            }
+        }
         return r;
     }
 }
