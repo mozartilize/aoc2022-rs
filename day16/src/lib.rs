@@ -1,5 +1,6 @@
+use itertools::Itertools;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     hash::Hash,
     vec,
 };
@@ -34,16 +35,6 @@ pub struct Container {
 }
 
 impl Container {
-    pub fn has_flow_rate_vaults(&self) -> Vec<&usize> {
-        let x = self
-            .vaults
-            .iter()
-            .filter(|v| v.flow_rate > 0)
-            .map(|v| self.idxes.get(&v.name).unwrap())
-            .collect::<Vec<_>>();
-        x
-    }
-
     pub fn new() -> Self {
         Self {
             vaults: vec![],
@@ -52,24 +43,32 @@ impl Container {
         }
     }
 
+    pub fn add_vault(&mut self, v: Vault) {
+        let vault_name = v.name.clone();
+        self.vaults.push(v);
+        let idx = self.vaults.len() - 1;
+        self.rev_idxes.insert(idx, vault_name.clone());
+        self.idxes.insert(vault_name, idx);
+    }
+
+    pub fn has_flow_rate_vaults(&self) -> Vec<&usize> {
+        let x = self
+            .vaults
+            .iter()
+            .filter(|v| v.flow_rate > 0)
+            .map(|v| self.idxes.get(v.name.as_str()).unwrap())
+            .collect::<Vec<_>>();
+        x
+    }
+
     fn get_vault_by_name(&self, name: &str) -> &Vault {
         let idx = self.idxes[name];
         &self.vaults[idx]
-        // let v = self.vaults.iter().find(|v| &v.name == name).unwrap();
-        // v
     }
 
     fn get_mut_vault_by_name(&mut self, name: &str) -> &mut Vault {
         let idx = self.idxes[name];
         &mut self.vaults[idx]
-    }
-
-    pub fn add_vault(&mut self, v: Vault) {
-        let vault_name = String::from(&v.name);
-        self.vaults.push(v);
-        self.idxes
-            .insert(String::from(&vault_name), self.vaults.len() - 1);
-        self.rev_idxes.insert(self.vaults.len() - 1, vault_name);
     }
 
     pub fn link_vaults(&mut self, vault_name: &str, links: Vec<&str>) {
@@ -81,50 +80,15 @@ impl Container {
         v.add_links(link_idxes);
     }
 
-    pub fn run2(
-        &self,
-        start: usize,
-        order: &[&usize],
-        cache: &mut HashMap<Vec<usize>, Vec<usize>>,
-        cache2: &mut HashMap<(usize, Vec<usize>), (i32, u32)>,
+    fn pressure_gain<'a>(
+        &'a self,
+        min: i32,
+        pressure: u32,
+        src: &'a usize,
+        dst: &'a usize,
+        bfs_cache: &mut HashMap<[&'a usize; 2], Vec<&'a usize>>,
     ) -> (i32, u32) {
-        if let Some((min, pressure)) =
-            cache2.get(&(start, order.iter().map(|x| **x).collect::<Vec<_>>()))
-        {
-            // println!("cached2");
-            return (*min, *pressure);
-        }
-        let head = &order[0..order.len() - 1];
-        let tail = &order[order.len() - 1..];
-        let mut min;
-        let mut pressure;
-        let mut _start = start;
-        if head.len() == 0 {
-            min = 30;
-            pressure = 0;
-        } else {
-            (min, pressure) = self.run2(start, head, cache, cache2);
-            _start = **head.last().unwrap();
-        }
-        if min < 0 {
-            println!("{}, {:?}", min, head);
-            // min += min + p.len() as i32;
-        } else {
-            let p = bfs(&self, _start, *tail[0], cache);
-            min -= p.len() as i32;
-            let v = self.get_vault_by_name(&self.rev_idxes[tail[0]]);
-            // println!("Open vault {} at min {}", v.name, min);
-            pressure += v.flow_rate * min as u32;
-        }
-        cache2.insert(
-            (start, order.iter().map(|x| **x).collect::<Vec<_>>()),
-            (min, pressure),
-        );
-        return (min, pressure);
-    }
-
-    fn pressure_gain(&self, min: i32, pressure: u32, src: usize, dst: usize) -> (i32, u32) {
-        let p = bfs(&self, src, dst, &mut HashMap::new());
+        let p = bfs(self, src, dst, bfs_cache);
         let min = min - p.len() as i32;
         let v = self.get_vault_by_name(&self.rev_idxes[&dst]);
         // println!("Open vault {} at min {}", v.name, min);
@@ -138,76 +102,87 @@ impl Container {
         )
     }
 
-    pub fn run(
-        &self,
-        start: usize,
-        order: Vec<&usize>,
-        cache: &mut HashMap<Vec<usize>, Vec<usize>>,
-    ) -> u32 {
-        let mut min: i32 = 30;
-        let mut _start = start;
-        let mut pressure = 0;
-        for vidx in order {
-            let p = bfs(&self, _start, *vidx, cache);
-            min -= p.len() as i32;
-            if min < 0 {
-                break;
-            }
-            let v = self.get_vault_by_name(&self.rev_idxes[vidx]);
-            // println!("Open vault {} at min {}", v.name, min);
-            pressure += v.flow_rate * min as u32;
-            _start = *vidx;
-        }
-        // dbg!(pressure);
-        pressure
-    }
-
     pub fn run3<'a>(
-        &self,
+        &'a self,
         min: i32,
         pressure: u32,
         path: Vec<&'a usize>,
         pool: Vec<&'a usize>,
-        db: &mut HashMap<Vec<&'a usize>, (i32, u32)>,
-    ) {
+        bfs_cache: &mut HashMap<[&'a usize; 2], Vec<&'a usize>>,
+    ) -> u32 {
+        // the 3rd function that works for part1
         let start = path.last().unwrap();
         let x = pool
             .iter()
-            .filter(|v| {
-                let (min, pressure) = self.pressure_gain(min, pressure, **start, ***v);
+            .filter_map(|v| {
+                let (min, pressure) = self.pressure_gain(min, pressure, start, v, bfs_cache);
                 if min > 0 {
                     let mut new_path = path.clone();
-                    new_path.push(v);
-                    db.insert(new_path, (min, pressure));
+                    new_path.push(*v);
+                    let mut new_pool = pool.clone();
+                    new_pool.retain(|nv| nv != v);
+                    Some((pressure, min, new_path, new_pool))
+                } else {
+                    None
                 }
-                min > 0
             })
+            .collect::<Vec<_>>();
+        let r = x
+            .into_iter()
+            .map(|r| self.run3(r.1, r.0, r.2, r.3, bfs_cache))
+            .max();
+        match r {
+            Some(p) => p,
+            None => pressure,
+        }
+    }
+
+    pub fn run_part2(&self) {
+        let pool = self
+            .has_flow_rate_vaults()
+            .iter()
             .map(|v| *v)
             .collect::<Vec<_>>();
-        for v in x.iter() {
-            let mut new_pool = x.clone();
-            new_pool.retain(|nv| nv != v);
-            let mut new_path = path.clone();
-            new_path.push(v);
-            let (min, pressure) = db.get(&new_path).unwrap();
-            self.run3(*min, *pressure, new_path, new_pool, db);
+        let mut db = HashMap::new();
+        let mut db2 = HashMap::new();
+
+        for i in 1..=pool.len()/2+1 {
+            for sub_pool in pool.clone().into_iter().combinations(i) {
+                // Generate all possible paths for both elephant and human.
+                // Because both have same productivity so we could reduce the pool to half for them.
+                // For example, with 16 vaults, both should open 8, ideally.
+                // But it's possible that human open 5 and elephant could open 11.
+                let path = vec![&self.idxes["AA"]];
+                let x = self.run3(26, 0, path, sub_pool.clone(), &mut db);
+                db2.insert(BTreeSet::from_iter(sub_pool.into_iter()), x);
+            }
         }
+
+        let x = db2.iter()
+            .tuple_combinations()
+            // filtering out pair of path that dont share any common vault
+            .filter(|(human, elephant)| human.0.is_disjoint(elephant.0))
+            .map(|(human, elephant)| human.1 + elephant.1)
+            .max()
+            .unwrap();
+        dbg!(x);
     }
 }
 
-fn bfs(
-    adj: &Container,
-    src: usize,
-    dst: usize,
-    cache: &mut HashMap<Vec<usize>, Vec<usize>>,
-) -> Vec<usize> {
-    if let Some(p) = cache.get(&vec![src, dst]) {
+fn bfs<'a>(
+    adj: &'a Container,
+    src: &'a usize,
+    dst: &'a usize,
+    bfs_cache: &mut HashMap<[&'a usize; 2], Vec<&'a usize>>,
+) -> Vec<&'a usize> {
+    if let Some(p) = bfs_cache.get(&[src, dst]) {
         // println!("cached");
-        return (*p).clone();
+        return p.to_vec();
     }
-    let mut q: VecDeque<Vec<usize>> = VecDeque::new();
 
-    let mut path = vec![];
+    let mut q: VecDeque<Vec<&usize>> = VecDeque::new();
+
+    let mut path: Vec<&usize> = vec![];
     path.push(src);
     q.push_back(path);
 
@@ -215,29 +190,29 @@ fn bfs(
         let path = q.pop_front().unwrap();
         let curr = path.last().unwrap();
 
-        if curr == &dst {
-            cache.insert(vec![src, dst], path.clone());
-            return path;
+        if *curr == dst {
+            bfs_cache.insert([src, dst], path.clone());
+            return bfs_cache.get(&[src, dst]).unwrap().to_vec();
         }
 
-        let vault_name = String::from(&adj.rev_idxes[&curr]);
-        let v = adj.get_vault_by_name(&vault_name);
+        let vault_name = &adj.rev_idxes[curr];
+        let v = adj.get_vault_by_name(vault_name);
         for x in &v.links {
-            if !path.contains(x) {
+            if !path.contains(&x) {
                 let mut new_path = path.clone();
-                new_path.push(*x);
+                new_path.push(x);
                 q.push_back(new_path);
             }
         }
     }
-    cache.insert(vec![src, dst], vec![]);
-    vec![]
+    bfs_cache.insert([src, dst], vec![]);
+    bfs_cache.get(&[src, dst]).unwrap().to_vec()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    // use itertools::Itertools;
+    use itertools::Itertools;
 
     #[test]
     fn test_builder() {
@@ -275,46 +250,26 @@ mod tests {
         c.link_vaults("II", vec!["AA", "JJ"]);
         c.link_vaults("JJ", vec!["II"]);
 
-        // dbg!(&c.idxes);
-        // let mut cache = HashMap::new();
-        // dbg!(bfs(&c, 2, 6, &mut cache));
-
-        // let mut cache2 = HashMap::new();
-        // let mut max_pressure = 0;
-        // for order in c
-        // .has_flow_rate_vaults()
-        // .iter()
-        // .permutations(c.has_flow_rate_vaults().len())
-        // {
-        //     let (min, pressure) = c.run2(0, &order, &mut cache, &mut cache2);
-        //     if min > 0 && pressure > max_pressure {
-        //         max_pressure = pressure;
-        //     }
-        // }
-
-        // dbg!(max_pressure);
-
-        // dbg!(c.run2(0, &[&3, &1, &9, &7, &4, &2], &mut cache, &mut cache2));
-        // let max_pressure = c
-        //     .has_flow_rate_vaults()
-        //     .iter()
-        //     .permutations(c.has_flow_rate_vaults().len())
-        //     .map(|order| {
-        //         c.run(0, order, &mut cache)
-        //     })
-        //     .max();
-
-        // dbg!(max_pressure);
-
         let pool = c
             .has_flow_rate_vaults()
-            .into_iter()
-            .map(|v| v)
+            .iter()
+            .map(|v| *v)
             .collect::<Vec<_>>();
+        // .iter()
+        // .map(|v| *v)
+        // .collect::<Vec<_>>();
         let path = vec![&c.idxes["AA"]];
         let mut db = HashMap::new();
-        c.run3(30, 0, path, pool, &mut db);
+        let x = c.run3(30, 0, path, pool, &mut db);
         // dbg!(db);
-        dbg!(db.values().map(|v| { v.1 }).max());
+        dbg!(x);
+
+        let mut count = 0;
+        for i in 1..=c.has_flow_rate_vaults().len() {
+            let x = c.has_flow_rate_vaults().iter().combinations(i).count();
+            dbg!(x);
+            count += x;
+        }
+        dbg!(count);
     }
 }

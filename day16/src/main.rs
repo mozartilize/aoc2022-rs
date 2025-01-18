@@ -186,11 +186,12 @@ fn main() {
 
     let pool = c
         .has_flow_rate_vaults()
-        .into_iter()
-        .map(|v| v)
+        .iter()
+        .map(|v| *v)
         .collect::<Vec<_>>();
     let path = vec![&c.idxes["AA"]];
     let mut db = HashMap::new();
-    c.run3(30, 0, path, pool, &mut db);
-    dbg!(db.values().map(|v| { v.1 }).max());
+    dbg!(c.run3(30, 0, path, pool, &mut db));
+
+    c.run_part2();
 }
