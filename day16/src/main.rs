@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use day16::{Container, Vault};
 
 fn main() {
-    let mut c = Container::new();
     let zt_v = Vault::new("ZT".to_string(), 0);
     let jx_v = Vault::new("JX".to_string(), 22);
     let em_v = Vault::new("EM".to_string(), 0);
@@ -64,132 +63,137 @@ fn main() {
     let fr_v = Vault::new("FR".to_string(), 0);
     let zo_v = Vault::new("ZO".to_string(), 0);
 
-    c.add_vault(zt_v);
-    c.add_vault(jx_v);
-    c.add_vault(em_v);
-    c.add_vault(aa_v);
-    c.add_vault(hw_v);
-    c.add_vault(ik_v);
-    c.add_vault(ha_v);
-    c.add_vault(wh_v);
-    c.add_vault(ku_v);
-    c.add_vault(qd_v);
-    c.add_vault(cf_v);
-    c.add_vault(vc_v);
-    c.add_vault(jt_v);
-    c.add_vault(qq_v);
-    c.add_vault(zp_v);
-    c.add_vault(li_v);
-    c.add_vault(ci_v);
-    c.add_vault(vk_v);
-    c.add_vault(wl_v);
-    c.add_vault(ti_v);
-    c.add_vault(nu_v);
-    c.add_vault(ds_v);
-    c.add_vault(he_v);
-    c.add_vault(zh_v);
-    c.add_vault(to_v);
-    c.add_vault(cm_v);
-    c.add_vault(wm_v);
-    c.add_vault(ez_v);
-    c.add_vault(pb_v);
-    c.add_vault(xl_v);
-    c.add_vault(lb_v);
-    c.add_vault(wq_v);
-    c.add_vault(bv_v);
-    c.add_vault(rn_v);
-    c.add_vault(lw_v);
-    c.add_vault(np_v);
-    c.add_vault(mt_v);
-    c.add_vault(et_v);
-    c.add_vault(hg_v);
-    c.add_vault(mv_v);
-    c.add_vault(rt_v);
-    c.add_vault(on_v);
-    c.add_vault(mo_v);
-    c.add_vault(uy_v);
-    c.add_vault(ur_v);
-    c.add_vault(ym_v);
-    c.add_vault(rz_v);
-    c.add_vault(ad_v);
-    c.add_vault(eh_v);
-    c.add_vault(eq_v);
-    c.add_vault(kx_v);
-    c.add_vault(br_v);
-    c.add_vault(lc_v);
-    c.add_vault(yw_v);
-    c.add_vault(ec_v);
-    c.add_vault(it_v);
-    c.add_vault(ms_v);
-    c.add_vault(fr_v);
-    c.add_vault(zo_v);
+    let vaults = vec![
+        zt_v,
+        jx_v,
+        em_v,
+        aa_v,
+        hw_v,
+        ik_v,
+        ha_v,
+        wh_v,
+        ku_v,
+        qd_v,
+        cf_v,
+        vc_v,
+        jt_v,
+        qq_v,
+        zp_v,
+        li_v,
+        ci_v,
+        vk_v,
+        wl_v,
+        ti_v,
+        nu_v,
+        ds_v,
+        he_v,
+        zh_v,
+        to_v,
+        cm_v,
+        wm_v,
+        ez_v,
+        pb_v,
+        xl_v,
+        lb_v,
+        wq_v,
+        bv_v,
+        rn_v,
+        lw_v,
+        np_v,
+        mt_v,
+        et_v,
+        hg_v,
+        mv_v,
+        rt_v,
+        on_v,
+        mo_v,
+        uy_v,
+        ur_v,
+        ym_v,
+        rz_v,
+        ad_v,
+        eh_v,
+        eq_v,
+        kx_v,
+        br_v,
+        lc_v,
+        yw_v,
+        ec_v,
+        it_v,
+        ms_v,
+        fr_v,
+        zo_v,
+    ];
+    let links = vec![
+        vec!["QQ", "DS"],
+        vec!["CI", "ZH", "UR"],
+        vec!["WH", "IT"],
+        vec!["EQ", "QD", "NP", "ZP", "KX"],
+        vec!["CI", "BV"],
+        vec!["ET", "NU", "ZO", "XL", "QD"],
+        vec!["WQ", "LB"],
+        vec!["EM", "LW"],
+        vec!["BV", "CF"],
+        vec!["AA", "IK"],
+        vec!["KU", "JT", "CM"],
+        vec!["AD", "UY"],
+        vec!["CF", "ZH"],
+        vec!["ZT"],
+        vec!["EZ", "AA"],
+        vec!["LB", "CM"],
+        vec!["HW", "JX"],
+        vec!["YM", "LC", "HE", "NU", "TI"],
+        vec!["LW", "TO"],
+        vec!["VK", "YW"],
+        vec!["VK", "IK"],
+        vec!["NP", "MV", "FR", "ZT", "YW"],
+        vec!["VK", "EQ"],
+        vec!["JT", "JX"],
+        vec!["MT", "WL"],
+        vec!["LI", "CF"],
+        vec!["MO", "WQ", "EC", "RN"],
+        vec!["RT", "RZ", "ZP"],
+        vec!["YM", "UY"],
+        vec!["IK", "MS"],
+        vec!["LI", "HA", "ON", "UR", "AD"],
+        vec!["WM", "HA"],
+        vec!["KU", "RT", "HW", "MO", "EH"],
+        vec!["WM", "RZ"],
+        vec!["WH", "WL"],
+        vec!["AA", "DS"],
+        vec!["TO", "HG"],
+        vec!["IK", "EC"],
+        vec!["MT"],
+        vec!["UY", "DS"],
+        vec!["BV", "EZ"],
+        vec!["LB", "EH"],
+        vec!["BV", "WM"],
+        vec!["PB", "BR", "MS", "VC", "MV"],
+        vec!["JX", "LB"],
+        vec!["PB", "VK"],
+        vec!["RN", "EZ"],
+        vec!["VC", "LB"],
+        vec!["ON", "BV"],
+        vec!["AA", "HE"],
+        vec!["AA", "BR"],
+        vec!["UY", "KX"],
+        vec!["VK", "IT"],
+        vec!["TI", "DS"],
+        vec!["ET", "WM"],
+        vec!["LC", "EM"],
+        vec!["UY", "XL"],
+        vec!["DS", "ZO"],
+        vec!["FR", "IK"],
+    ];
 
-    c.link_vaults("ZT", vec!["QQ", "DS"]);
-    c.link_vaults("JX", vec!["CI", "ZH", "UR"]);
-    c.link_vaults("EM", vec!["WH", "IT"]);
-    c.link_vaults("AA", vec!["EQ", "QD", "NP", "ZP", "KX"]);
-    c.link_vaults("HW", vec!["CI", "BV"]);
-    c.link_vaults("IK", vec!["ET", "NU", "ZO", "XL", "QD"]);
-    c.link_vaults("HA", vec!["WQ", "LB"]);
-    c.link_vaults("WH", vec!["EM", "LW"]);
-    c.link_vaults("KU", vec!["BV", "CF"]);
-    c.link_vaults("QD", vec!["AA", "IK"]);
-    c.link_vaults("CF", vec!["KU", "JT", "CM"]);
-    c.link_vaults("VC", vec!["AD", "UY"]);
-    c.link_vaults("JT", vec!["CF", "ZH"]);
-    c.link_vaults("QQ", vec!["ZT"]);
-    c.link_vaults("ZP", vec!["EZ", "AA"]);
-    c.link_vaults("LI", vec!["LB", "CM"]);
-    c.link_vaults("CI", vec!["HW", "JX"]);
-    c.link_vaults("VK", vec!["YM", "LC", "HE", "NU", "TI"]);
-    c.link_vaults("WL", vec!["LW", "TO"]);
-    c.link_vaults("TI", vec!["VK", "YW"]);
-    c.link_vaults("NU", vec!["VK", "IK"]);
-    c.link_vaults("DS", vec!["NP", "MV", "FR", "ZT", "YW"]);
-    c.link_vaults("HE", vec!["VK", "EQ"]);
-    c.link_vaults("ZH", vec!["JT", "JX"]);
-    c.link_vaults("TO", vec!["MT", "WL"]);
-    c.link_vaults("CM", vec!["LI", "CF"]);
-    c.link_vaults("WM", vec!["MO", "WQ", "EC", "RN"]);
-    c.link_vaults("EZ", vec!["RT", "RZ", "ZP"]);
-    c.link_vaults("PB", vec!["YM", "UY"]);
-    c.link_vaults("XL", vec!["IK", "MS"]);
-    c.link_vaults("LB", vec!["LI", "HA", "ON", "UR", "AD"]);
-    c.link_vaults("WQ", vec!["WM", "HA"]);
-    c.link_vaults("BV", vec!["KU", "RT", "HW", "MO", "EH"]);
-    c.link_vaults("RN", vec!["WM", "RZ"]);
-    c.link_vaults("LW", vec!["WH", "WL"]);
-    c.link_vaults("NP", vec!["AA", "DS"]);
-    c.link_vaults("MT", vec!["TO", "HG"]);
-    c.link_vaults("ET", vec!["IK", "EC"]);
-    c.link_vaults("HG", vec!["MT"]);
-    c.link_vaults("MV", vec!["UY", "DS"]);
-    c.link_vaults("RT", vec!["BV", "EZ"]);
-    c.link_vaults("ON", vec!["LB", "EH"]);
-    c.link_vaults("MO", vec!["BV", "WM"]);
-    c.link_vaults("UY", vec!["PB", "BR", "MS", "VC", "MV"]);
-    c.link_vaults("UR", vec!["JX", "LB"]);
-    c.link_vaults("YM", vec!["PB", "VK"]);
-    c.link_vaults("RZ", vec!["RN", "EZ"]);
-    c.link_vaults("AD", vec!["VC", "LB"]);
-    c.link_vaults("EH", vec!["ON", "BV"]);
-    c.link_vaults("EQ", vec!["AA", "HE"]);
-    c.link_vaults("KX", vec!["AA", "BR"]);
-    c.link_vaults("BR", vec!["UY", "KX"]);
-    c.link_vaults("LC", vec!["VK", "IT"]);
-    c.link_vaults("YW", vec!["TI", "DS"]);
-    c.link_vaults("EC", vec!["ET", "WM"]);
-    c.link_vaults("IT", vec!["LC", "EM"]);
-    c.link_vaults("MS", vec!["UY", "XL"]);
-    c.link_vaults("FR", vec!["DS", "ZO"]);
-    c.link_vaults("ZO", vec!["FR", "IK"]);
+    let c = Container::build(vaults, links);
 
     let pool = c
         .has_flow_rate_vaults()
         .iter()
         .map(|v| *v)
         .collect::<Vec<_>>();
-    let path = vec![&c.idxes["AA"]];
+    let path = vec![&c.borrow_idxes()["AA"]];
     let mut db = HashMap::new();
     dbg!(c.run3(30, 0, path, pool, &mut db));
 

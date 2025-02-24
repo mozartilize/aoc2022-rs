@@ -1,8 +1,7 @@
 use itertools::Itertools;
+use ouroboros::self_referencing;
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
-    hash::Hash,
-    vec,
+    collections::{BTreeSet, HashMap, VecDeque}, hash::Hash, str::FromStr, vec
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -28,56 +27,48 @@ impl Vault {
     }
 }
 
+#[self_referencing]
 pub struct Container {
     vaults: Vec<Vault>,
-    pub idxes: HashMap<String, usize>,
-    rev_idxes: HashMap<usize, String>,
+
+    #[borrows(vaults)]
+    #[covariant]
+    pub idxes: HashMap<&'this str, usize>,
+    #[borrows(vaults)]
+    #[covariant]
+    rev_idxes: HashMap<usize, &'this str>,
 }
 
 impl Container {
-    pub fn new() -> Self {
-        Self {
-            vaults: vec![],
-            idxes: HashMap::new(),
-            rev_idxes: HashMap::new(),
+    pub fn build(mut vaults: Vec<Vault>, links: Vec<Vec<&str>>) -> Self {
+        let idxes = vaults.iter().enumerate().map(|(idx, v)| { (v.name.clone(), idx) }).collect::<HashMap<_,_>>();
+        for (idx, _links) in links.iter().enumerate() {
+            // let key = String::from_str(v);
+            vaults[idx].add_links(_links.iter().map(|v| idxes[&String::from_str(v).unwrap()] ).collect::<Vec<_>>());
         }
+        ContainerBuilder{
+            vaults,
+            idxes_builder: |vaults| vaults.iter().enumerate().map(|(idx, v)| { (v.name.as_str(), idx) }).collect::<HashMap<_,_>>(),
+            rev_idxes_builder: |vaults| vaults.iter().enumerate().map(|(idx, v)| { (idx, v.name.as_str()) }).collect::<HashMap<_,_>>(),
+        }.build()
     }
-
-    pub fn add_vault(&mut self, v: Vault) {
-        let vault_name = v.name.clone();
-        self.vaults.push(v);
-        let idx = self.vaults.len() - 1;
-        self.rev_idxes.insert(idx, vault_name.clone());
-        self.idxes.insert(vault_name, idx);
-    }
-
     pub fn has_flow_rate_vaults(&self) -> Vec<&usize> {
         let x = self
-            .vaults
+            .borrow_vaults()
             .iter()
             .filter(|v| v.flow_rate > 0)
-            .map(|v| self.idxes.get(v.name.as_str()).unwrap())
+            .map(|v| self.borrow_idxes().get(v.name.as_str()).unwrap())
             .collect::<Vec<_>>();
         x
     }
 
     fn get_vault_by_name(&self, name: &str) -> &Vault {
-        let idx = self.idxes[name];
-        &self.vaults[idx]
+        let idx = self.borrow_idxes()[name];
+        &self.borrow_vaults()[idx]
     }
 
-    fn get_mut_vault_by_name(&mut self, name: &str) -> &mut Vault {
-        let idx = self.idxes[name];
-        &mut self.vaults[idx]
-    }
-
-    pub fn link_vaults(&mut self, vault_name: &str, links: Vec<&str>) {
-        let link_idxes = links
-            .iter()
-            .map(|name| self.idxes.get(*name).unwrap().to_owned())
-            .collect::<Vec<usize>>();
-        let v = self.get_mut_vault_by_name(vault_name);
-        v.add_links(link_idxes);
+    fn get_vault_by_idx(&self, idx: usize) -> &Vault {
+        &self.borrow_vaults()[idx]
     }
 
     fn pressure_gain<'a>(
@@ -90,7 +81,7 @@ impl Container {
     ) -> (i32, u32) {
         let p = bfs(self, src, dst, bfs_cache);
         let min = min - p.len() as i32;
-        let v = self.get_vault_by_name(&self.rev_idxes[&dst]);
+        let v = self.get_vault_by_idx(*dst);
         // println!("Open vault {} at min {}", v.name, min);
         (
             min,
@@ -152,7 +143,7 @@ impl Container {
                 // Because both have same productivity so we could reduce the pool to half for them.
                 // For example, with 16 vaults, both should open 8, ideally.
                 // But it's possible that human open 5 and elephant could open 11.
-                let path = vec![&self.idxes["AA"]];
+                let path = vec![&self.borrow_idxes()["AA"]];
                 let x = self.run3(26, 0, path, sub_pool.clone(), &mut db);
                 db2.insert(BTreeSet::from_iter(sub_pool.into_iter()), x);
             }
@@ -195,7 +186,7 @@ fn bfs<'a>(
             return bfs_cache.get(&[src, dst]).unwrap().to_vec();
         }
 
-        let vault_name = &adj.rev_idxes[curr];
+        let vault_name = &adj.borrow_rev_idxes()[curr];
         let v = adj.get_vault_by_name(vault_name);
         for x in &v.links {
             if !path.contains(&x) {
@@ -216,7 +207,6 @@ mod tests {
 
     #[test]
     fn test_builder() {
-        let mut c = Container::new();
         let aa_v = Vault::new("AA".to_string(), 0);
         let bb_v = Vault::new("BB".to_string(), 13);
         let cc_v = Vault::new("CC".to_string(), 2);
@@ -228,28 +218,33 @@ mod tests {
         let ii_v = Vault::new("II".to_string(), 0);
         let jj_v = Vault::new("JJ".to_string(), 21);
 
-        c.add_vault(aa_v);
-        c.add_vault(bb_v);
-        c.add_vault(cc_v);
-        c.add_vault(dd_v);
-        c.add_vault(ee_v);
-        c.add_vault(ff_v);
-        c.add_vault(gg_v);
-        c.add_vault(hh_v);
-        c.add_vault(ii_v);
-        c.add_vault(jj_v);
+        let vaults = vec![
+            aa_v,
+            bb_v,
+            cc_v,
+            dd_v,
+            ee_v,
+            ff_v,
+            gg_v,
+            hh_v,
+            ii_v,
+            jj_v,
+        ];
 
-        c.link_vaults("AA", vec!["BB", "DD", "II"]);
-        c.link_vaults("BB", vec!["CC", "AA"]);
-        c.link_vaults("CC", vec!["DD", "BB"]);
-        c.link_vaults("DD", vec!["CC", "AA", "EE"]);
-        c.link_vaults("EE", vec!["FF", "DD"]);
-        c.link_vaults("FF", vec!["EE", "GG"]);
-        c.link_vaults("GG", vec!["FF", "HH"]);
-        c.link_vaults("HH", vec!["GG"]);
-        c.link_vaults("II", vec!["AA", "JJ"]);
-        c.link_vaults("JJ", vec!["II"]);
-
+        let links = vec![
+            vec!["BB", "DD", "II"],
+            vec!["CC", "AA"],
+            vec!["DD", "BB"],
+            vec!["CC", "AA", "EE"],
+            vec!["FF", "DD"],
+            vec!["EE", "GG"],
+            vec!["FF", "HH"],
+            vec!["GG"],
+            vec!["AA", "JJ"],
+            vec!["II"],
+        ];
+        
+        let c = Container::build(vaults, links);
         let pool = c
             .has_flow_rate_vaults()
             .iter()
@@ -258,7 +253,7 @@ mod tests {
         // .iter()
         // .map(|v| *v)
         // .collect::<Vec<_>>();
-        let path = vec![&c.idxes["AA"]];
+        let path = vec![&c.borrow_idxes()["AA"]];
         let mut db = HashMap::new();
         let x = c.run3(30, 0, path, pool, &mut db);
         // dbg!(db);
