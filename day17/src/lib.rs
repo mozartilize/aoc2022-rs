@@ -1,31 +1,69 @@
+use std::{collections::HashMap, vec};
+
 use itertools::any;
 
-pub struct Chamber {
-    pub height: usize,
-    buffer: Vec<Vec<u8>>,
-    shape_gen_index: i64,
-    shapes: Vec<Vec<Vec<u8>>>,
+const WIDTH: usize = 7;
+
+#[derive(Debug, Default)]
+struct Coord {
     x: usize,
     y: usize,
+}
+
+const SHAPES: [&[Coord]; 5] = [
+    // horizontal line
+    &[
+        Coord { x: 0, y: 0 },
+        Coord { x: 1, y: 0 },
+        Coord { x: 2, y: 0 },
+        Coord { x: 3, y: 0 },
+    ],
+    // plus
+    &[
+        Coord { x: 0, y: 1 },
+        Coord { x: 1, y: 0 },
+        Coord { x: 1, y: 1 },
+        Coord { x: 1, y: 2 },
+        Coord { x: 2, y: 1 },
+    ],
+    // J (or backwards L)
+    &[
+        Coord { x: 0, y: 0 },
+        Coord { x: 1, y: 0 },
+        Coord { x: 2, y: 0 },
+        Coord { x: 2, y: 1 },
+        Coord { x: 2, y: 2 },
+    ],
+    // vertical line
+    &[
+        Coord { x: 0, y: 0 },
+        Coord { x: 0, y: 1 },
+        Coord { x: 0, y: 2 },
+        Coord { x: 0, y: 3 },
+    ],
+    // square
+    &[
+        Coord { x: 0, y: 0 },
+        Coord { x: 1, y: 0 },
+        Coord { x: 0, y: 1 },
+        Coord { x: 1, y: 1 },
+    ],
+];
+pub struct Chamber {
+    buffer: Vec<[u8; WIDTH]>,
+    shape_gen_index: i64,
     pub pressure: String,
     pressure_gen_index: i64,
     has_shape: bool,
+    // clever solution from https://nickymeuleman.netlify.app,
+    // only tracking the curr coord than we could add the offset
+    // to get the value from the buffer to check if we could move the rocks
+    curr: Coord,
+    pattern: HashMap<(usize, usize), (usize, usize, usize)>,
 }
 
 impl Chamber {
     pub fn new(pressure: &str) -> Self {
-        let shapes = vec![
-            // horizontal line
-            vec![vec![1, 1, 1, 1]],
-            // cross
-            vec![vec![0, 1, 0], vec![1, 1, 1], vec![0, 1, 0]],
-            // backward L
-            vec![vec![1, 1, 1], vec![0, 0, 1], vec![0, 0, 1]],
-            // vertical line
-            vec![vec![1], vec![1], vec![1], vec![1]],
-            // square
-            vec![vec![1, 1], vec![1, 1]],
-        ];
         let _pressure = pressure
             .split("")
             .filter_map(|v| {
@@ -37,26 +75,26 @@ impl Chamber {
             })
             .collect::<Vec<_>>();
         return Self {
-            height: 0,
             buffer: vec![],
             shape_gen_index: -1,
-            shapes,
-            x: 2,
-            y: 3,
             pressure: pressure.to_string(),
             pressure_gen_index: -1,
             has_shape: false,
+            pattern: HashMap::new(),
+            curr: Coord::default(),
         };
     }
 
-    pub fn run(&mut self, cnt: usize) {
-        let mut cnt_ = 0;
+    pub fn run(&mut self, cnt: usize) -> usize {
+        let mut _cnt = 0;
+        let mut cycle_detected = false;
+        let mut real_height = 0;
         loop {
             if !self.has_shape {
                 self.spawn_shape();
                 self.has_shape = true;
                 let p = self.next_pressure();
-                // println!("{}   {}", cnt_ + 1, p);
+                // println!("{}   {}", _cnt + 1, p);
                 if p == '>' {
                     self.right();
                 } else {
@@ -65,20 +103,26 @@ impl Chamber {
             } else {
                 if self.down() {
                     let p = self.next_pressure();
-                    // println!("{}   {}", cnt_ + 1, p);
+                    // println!("{}   {}", _cnt + 1, p);
                     if p == '>' {
                         self.right();
                     } else {
                         self.left();
                     }
                 } else {
-                    self.get_height();
+                    for coord in SHAPES[self.shape_gen_index as usize] {
+                        if coord.y + self.curr.y >= self.buffer.len() {
+                            self.buffer.push([0; 7]);
+                        }
+                        self.buffer[coord.y + self.curr.y][coord.x + self.curr.x] = 1;
+                    }
+                    self.has_shape = false;
+                    self.trim_top();
                     // for line in self.buffer.iter().rev() {
                     //     for val in line {
                     //         if *val == 0 {
                     //             print!(".");
-                    //         }
-                    //         else {
+                    //         } else {
                     //             print!("#");
                     //         }
                     //     }
@@ -86,18 +130,51 @@ impl Chamber {
                     // }
                     // println!();
                     // println!();
-                    cnt_ += 1;
-                    if cnt_ == cnt {
+                    let key = (
+                        self.shape_gen_index as usize,
+                        self.pressure_gen_index as usize,
+                    );
+                    _cnt += 1;
+                    // some shapes drop first then the pattern starts appear
+                    // I was felt for the pattern starts with the first shape
+                    if let Some((repeat, __cnt, height)) = self.pattern.get_mut(&key) {
+                        if !cycle_detected && *repeat == 2 {
+                            cycle_detected = true;
+                            let shapes_cnt = _cnt - *__cnt;
+                            let chunk_height = self.buffer.len() - *height;
+                            let chunk_repeat = (cnt - _cnt) / shapes_cnt;
+                            dbg!(self.buffer.len(), *height, chunk_height, chunk_repeat, _cnt);
+                            _cnt += shapes_cnt * chunk_repeat;
+                            real_height = chunk_height * chunk_repeat;
+                        } else {
+                            *repeat += 1;
+                            *__cnt = _cnt;
+                            *height = self.buffer.len();
+                        }
+                    } else {
+                        self.pattern.insert(key, (1, _cnt, self.buffer.len()));
+                    };
+                    if _cnt == cnt {
+                        for line in self.buffer.iter() {
+                            for val in line {
+                                if *val == 0 {
+                                    print!(".");
+                                } else {
+                                    print!("#");
+                                }
+                            }
+                            println!();
+                        }
+                        println!();
+                        println!();
+                        println!("{}", _cnt);
                         break;
                     }
-                    self.has_shape = false;
                 }
             }
         }
-    }
-
-    fn curr_shape(&self) -> &Vec<Vec<u8>> {
-        &self.shapes[self.shape_gen_index as usize]
+        dbg!(real_height + self.buffer.len());
+        real_height + self.buffer.len()
     }
 
     fn next_pressure(&mut self) -> char {
@@ -112,26 +189,15 @@ impl Chamber {
             .unwrap()
     }
 
-    fn next_shape(&mut self) -> Vec<Vec<u8>> {
-        if self.shape_gen_index as usize == self.shapes.len() - 1 {
+    fn next_shape(&mut self) {
+        if self.shape_gen_index as usize == SHAPES.len() - 1 {
             self.shape_gen_index = 0;
         } else {
             self.shape_gen_index += 1;
         }
-        self.shapes[self.shape_gen_index as usize].clone()
     }
 
-    fn padding_shape(&self, shape: &mut Vec<Vec<u8>>) {
-        for i in 0..shape.len() {
-            let line = shape.get_mut(i).unwrap();
-            line.splice(0..0, vec![0, 0]);
-            for _ in 0..7 - line.len() {
-                line.push(0);
-            }
-        }
-    }
-
-    fn get_height(&mut self) {
+    fn trim_top(&mut self) {
         let mut i = 0;
         for y in (0..self.buffer.len()).rev() {
             if any(self.buffer[y].iter(), |v| *v != 0) {
@@ -139,117 +205,58 @@ impl Chamber {
             }
             i = y;
         }
-        let offset = self.buffer.len() - 1 - i;
-        if offset > 0 && self.curr_shape().len() + 3 > offset {
-            self.height += self.curr_shape().len() + 3 - offset - 1;
-        }
         if i > 0 {
             let _ = self.buffer.split_off(i);
         }
     }
 
     fn spawn_shape(&mut self) {
-        // println!("boom");
-        let slice = &[vec![0u8; 7], vec![0u8; 7], vec![0u8; 7]];
+        let slice = &[[0u8; WIDTH], [0u8; WIDTH], [0u8; WIDTH]];
         self.buffer.extend_from_slice(slice);
-        self.x = 2;
-        self.y = self.buffer.len();
+        self.curr.x = 2;
+        self.curr.y = self.buffer.len();
 
-        let mut ns = self.next_shape();
-        self.padding_shape(&mut ns);
-        self.buffer.extend_from_slice(&ns);
+        self.next_shape();
     }
 
     fn left(&mut self) -> bool {
-        if self.x == 0 {
-            return false;
-        }
-        let mut checks = vec![false; self.y + self.curr_shape().len()];
-        let mut vals = vec![0; self.y + self.curr_shape().len()];
-        for x in self.x..self.x + self.curr_shape()[0].len() {
-            for y in self.y..self.y + self.curr_shape().len() {
-                if self.curr_shape()[y - self.y][x - self.x] == 1 && !checks[y] {
-                    checks[y] = true;
-                    if self.buffer[y][x - 1] == 1 {
-                        vals[y] = 1;
-                    }
-                }
-            }
-            if any(vals.iter(), |v| *v == 1) {
+        for coord in SHAPES[self.shape_gen_index as usize] {
+            let x = coord.x + self.curr.x;
+            // we only add 3 blank lines, but
+            // no need to check for the part of the shape above the buffer
+            if coord.y + self.curr.y <= self.buffer.len() - 1
+                && (x == 0 || self.buffer[coord.y + self.curr.y][x - 1] == 1)
+            {
                 return false;
             }
         }
-        for y in self.y..self.y + self.curr_shape().len() {
-            for x in self.x..self.x + self.curr_shape()[0].len() {
-                if self.curr_shape()[y - self.y][x - self.x] != 0 {
-                    self.buffer[y][x - 1] = 1;
-                    self.buffer[y][x] = 0;
-                }
-            }
-        }
-        self.x -= 1;
+        self.curr.x -= 1;
         true
     }
 
     fn right(&mut self) -> bool {
-        if self.x + self.curr_shape()[0].len() == 7 {
-            return false;
-        }
-        let mut checks = vec![false; self.y + self.curr_shape().len()];
-        let mut vals = vec![0; self.y + self.curr_shape().len()];
-        for x in (self.x..self.x + self.curr_shape()[0].len()).rev() {
-            for y in self.y..self.y + self.curr_shape().len() {
-                if self.curr_shape()[y - self.y][x - self.x] == 1 && !checks[y] {
-                    checks[y] = true;
-                    if self.buffer[y][x + 1] == 1 {
-                        vals[y] = 1;
-                    }
-                }
-            }
-            if any(vals.iter(), |v| *v == 1) {
+        for coord in SHAPES[self.shape_gen_index as usize] {
+            let x = coord.x + self.curr.x;
+            if coord.y + self.curr.y <= self.buffer.len() - 1
+                && (x == WIDTH - 1 || self.buffer[coord.y + self.curr.y][x + 1] == 1)
+            {
                 return false;
             }
         }
-        for y in self.y..self.y + self.curr_shape().len() {
-            for x in (self.x..self.x + self.curr_shape()[0].len()).rev() {
-                if self.curr_shape()[y - self.y][x - self.x] != 0 {
-                    self.buffer[y][x + 1] = 1;
-                    self.buffer[y][x] = 0;
-                }
-            }
-        }
-        self.x += 1;
+        self.curr.x += 1;
         true
     }
 
     fn down(&mut self) -> bool {
-        if self.y == 0 {
-            return false;
-        }
-        let mut checks = vec![false; 7];
-        let mut vals = vec![0; 7];
-        for y in self.y..self.y + self.curr_shape().len() {
-            for x in self.x..self.x + self.curr_shape()[0].len() {
-                if self.curr_shape()[y - self.y][x - self.x] == 1 && !checks[x] {
-                    checks[x] = true;
-                    if self.buffer[y - 1][x] == 1 {
-                        vals[x] = 1;
-                    }
-                }
-            }
-            if any(vals.iter(), |v| *v == 1) {
+        for coord in SHAPES[self.shape_gen_index as usize] {
+            let y = coord.y + self.curr.y;
+            if coord.y + self.curr.y <= self.buffer.len() - 1
+                && (y == 0 || self.buffer[y - 1][coord.x + self.curr.x] == 1)
+            {
                 return false;
             }
         }
-        for y in self.y..self.y + self.curr_shape().len() {
-            for x in self.x..self.x + self.curr_shape()[0].len() {
-                if self.curr_shape()[y - self.y][x - self.x] != 0 {
-                    self.buffer[y - 1][x] = 1;
-                    self.buffer[y][x] = 0;
-                }
-            }
-        }
-        self.y -= 1;
+        self.curr.y -= 1;
         true
     }
 }
@@ -259,200 +266,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_1() {
-        let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.buffer = vec![
-            vec![1, 1, 1, 0, 0, 0, 0],
-            vec![1, 1, 1, 0, 0, 0, 0],
-            vec![0, 0, 1, 0, 0, 0, 0],
-            vec![0, 0, 1, 0, 0, 0, 0],
-        ]
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
-        c.shape_gen_index = 4;
-        c.x = 0;
-        c.y = 2;
-        assert_eq!(c.left(), false);
-        assert_eq!(c.right(), false);
-        assert_eq!(c.down(), true);
-        assert_eq!(
-            c.buffer,
-            vec![
-                vec![0, 0, 1, 0, 0, 0, 0],
-                vec![1, 1, 1, 0, 0, 0, 0],
-                vec![1, 1, 1, 0, 0, 0, 0],
-                vec![0, 0, 1, 0, 0, 0, 0],
-            ]
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn test_2() {
-        let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.buffer = vec![
-            vec![0, 1, 0, 0, 0, 0, 0],
-            vec![1, 1, 1, 0, 0, 0, 0],
-            vec![0, 1, 0, 1, 0, 0, 0],
-            vec![0, 1, 1, 1, 0, 0, 0],
-        ]
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
-        c.shape_gen_index = 1;
-        c.x = 0;
-        c.y = 1;
-        assert_eq!(c.down(), false);
-        assert_eq!(c.left(), false);
-        assert_eq!(c.right(), true);
-        assert_eq!(c.x, 1);
-        assert_eq!(
-            c.buffer,
-            vec![
-                vec![0, 0, 1, 0, 0, 0, 0],
-                vec![0, 1, 1, 1, 0, 0, 0],
-                vec![0, 0, 1, 1, 0, 0, 0],
-                vec![0, 1, 1, 1, 0, 0, 0],
-            ]
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn test_3() {
-        let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.buffer = vec![
-            vec![0, 1, 0, 0, 0, 0, 0],
-            vec![1, 1, 1, 0, 0, 0, 0],
-            vec![0, 1, 1, 0, 0, 0, 0],
-            vec![0, 1, 1, 1, 0, 0, 0],
-        ]
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
-        c.shape_gen_index = 1;
-        c.x = 0;
-        c.y = 1;
-        assert_eq!(c.down(), false);
-        assert_eq!(c.left(), false);
-        assert_eq!(c.right(), false);
-    }
-
-    #[test]
-    fn test_4() {
-        let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.buffer = vec![
-            vec![0, 0, 0, 0, 0, 1, 0],
-            vec![0, 0, 0, 0, 1, 1, 1],
-            vec![0, 0, 0, 0, 1, 1, 0],
-            vec![0, 0, 0, 1, 1, 1, 0],
-        ]
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
-        c.shape_gen_index = 1;
-        c.x = 4;
-        c.y = 1;
-        assert_eq!(c.down(), false);
-        assert_eq!(c.right(), false);
-        assert_eq!(c.left(), false);
-    }
-
-    #[test]
-    fn test_5() {
-        let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.buffer = vec![
-            vec![0, 0, 1, 0, 0, 0, 0],
-            vec![0, 1, 1, 1, 0, 0, 0],
-            vec![0, 0, 1, 1, 0, 0, 0],
-            vec![0, 1, 1, 1, 0, 0, 0],
-        ]
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
-        c.shape_gen_index = 1;
-        c.x = 1;
-        c.y = 1;
-        assert_eq!(c.down(), false);
-        assert_eq!(c.right(), false);
-        assert_eq!(c.left(), true);
-        assert_eq!(c.x, 0);
-        assert_eq!(
-            c.buffer,
-            vec![
-                vec![0, 1, 0, 0, 0, 0, 0],
-                vec![1, 1, 1, 0, 0, 0, 0],
-                vec![0, 1, 0, 1, 0, 0, 0],
-                vec![0, 1, 1, 1, 0, 0, 0],
-            ]
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn test_6() {
-        let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.buffer = vec![
-            vec![0, 0, 1, 0, 0, 0, 0],
-            vec![1, 1, 1, 1, 1, 0, 0],
-            vec![1, 0, 1, 0, 1, 0, 0],
-            vec![1, 1, 0, 1, 1, 0, 0],
-        ]
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
-        c.shape_gen_index = 1;
-        c.x = 1;
-        c.y = 1;
-        assert_eq!(c.right(), false);
-        assert_eq!(c.left(), false);
-        assert_eq!(c.down(), true);
-        assert_eq!(c.y, 0);
-        assert_eq!(
-            c.buffer,
-            vec![
-                vec![0, 0, 0, 0, 0, 0, 0],
-                vec![1, 0, 1, 0, 1, 0, 0],
-                vec![1, 1, 1, 1, 1, 0, 0],
-                vec![1, 1, 1, 1, 1, 0, 0],
-            ]
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn test_7() {
-        let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.buffer = vec![
-            vec![0, 0, 1, 0, 0, 0, 0],
-            vec![1, 1, 1, 1, 1, 0, 0],
-            vec![1, 1, 1, 1, 1, 0, 0],
-            vec![1, 0, 0, 0, 1, 0, 0],
-        ]
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>();
-        c.shape_gen_index = 1;
-        c.x = 1;
-        c.y = 1;
-        assert_eq!(c.right(), false);
-        assert_eq!(c.left(), false);
-        assert_eq!(c.down(), false);
-    }
-
-    #[test]
     fn test() {
         let mut c = Chamber::new(">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>");
-        c.run(2022);
-        assert_eq!(c.height, 3068);
+        let height = c.run(2022);
+        // dbg!(c.pattern);
+        assert_eq!(height, 3068);
+    }
+
+    #[test]
+    fn test_test() {
+        let mut c = Chamber::new("><<<>");
+        c.run(30);
+        // dbg!(c.pattern);
+        assert_eq!(c.buffer.len(), 3068);
     }
 }
